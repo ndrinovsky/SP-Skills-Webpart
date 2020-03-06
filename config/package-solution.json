@@ -1,0 +1,13 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "developer-skills-webpart-client-side-solution",
+    "id": "bab12c61-e732-4e25-924f-cccaff903f78",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "isDomainIsolated": true
+  },
+  "paths": {
+    "zippedPackage": "solution/developer-skills-webpart.sppkg"
+  }
+}
