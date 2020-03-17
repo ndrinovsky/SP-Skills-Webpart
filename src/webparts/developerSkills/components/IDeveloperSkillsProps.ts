@@ -1,3 +1,4 @@
 export interface IDeveloperSkillsProps {
-  description: string;
+    description: string;
+    classes: any;
 }
