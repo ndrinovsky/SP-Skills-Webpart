@@ -12,4 +12,6 @@ export interface IDeveloperSkillsState {
     developerOptions: IDropdownOption[];
     stats: any[];
     _isMounted : boolean;
+    isPanelOpen: boolean;
+    _loading: boolean;
 }

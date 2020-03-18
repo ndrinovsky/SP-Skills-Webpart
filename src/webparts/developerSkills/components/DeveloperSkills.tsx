@@ -1,17 +1,16 @@
 import * as React from 'react';
 import { IDeveloperSkillsProps } from './IDeveloperSkillsProps';
-import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Bar, Line, ComposedChart } from 'recharts';
+import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Bar, Line, ComposedChart, Label } from 'recharts';
 import { Dropdown, DropdownMenuItemType, IDropdownOption } from 'office-ui-fabric-react/lib/Dropdown';
-import { PrimaryButton, Facepile, FontSizes, IFacepilePersona, IconButton } from 'office-ui-fabric-react';
-import { Persona, PersonaSize} from 'office-ui-fabric-react/lib/Persona';
+import { PrimaryButton, Facepile, FontSizes, IFacepilePersona, IconButton, ActionButton, Panel, Dialog, DialogFooter, DefaultButton, Spinner } from 'office-ui-fabric-react';
+import { Persona, PersonaSize } from 'office-ui-fabric-react/lib/Persona';
 import Grid from '@material-ui/core/Grid';
 import { withStyles, createStyles } from '@material-ui/core';
 import { SpService } from '../services/spservice';
-import { sp, SiteUser } from '@pnp/sp/presets/all';
 import { IDeveloperSkillsState } from './IDeveloperSkillsState';
 import { IDeveloper } from '../interfaces/IDeveloper';
 import { ISkillSet } from '../interfaces/ISkillSet';
-
+import DeveloperPanel  from './DeveloperPanel';
 interface IStats {
     name: string;
     skillRange: number[];
@@ -30,11 +29,23 @@ export class DeveloperSkills extends React.Component<IDeveloperSkillsProps, IDev
             skillOptions: [],
             developerOptions: [],
             stats: [],
-            _isMounted: false
+            _isMounted: false,
+            isPanelOpen:false,
+            _loading:false
         };
         this.spService = new SpService(this.context);
+        this.openPanel = this.openPanel.bind(this);
+        this.closePanel = this.closePanel.bind(this);
     }
-
+    private closePanel(refresh : boolean){
+        this.setState({ isPanelOpen: false });
+        if(refresh){
+            this.fetchData();
+        }
+    }    
+    private openPanel = () =>{
+        this.setState({ isPanelOpen: true });
+    }
     private setDevelopers(developers) {
         this.setState({ developers });
     }
@@ -43,11 +54,11 @@ export class DeveloperSkills extends React.Component<IDeveloperSkillsProps, IDev
         this.setState({ selectedDeveloper });
     }
 
-    private setSkillOptions(skillOptions){
+    private setSkillOptions(skillOptions) {
         this.setState({ skillOptions });
     }
 
-    private setDeveloperOptions(developerOptions){
+    private setDeveloperOptions(developerOptions) {
         this.setState({ developerOptions });
     }
 
@@ -63,17 +74,17 @@ export class DeveloperSkills extends React.Component<IDeveloperSkillsProps, IDev
     private setTeam(slectedTeam) {
         this.setState({ slectedTeam });
     }
-    
-    private setStats(stats){
+
+    private setStats(stats) {
         this.setState({ stats });
     }
 
     private selectDeveloper = (ev?: React.MouseEvent<HTMLElement>, persona?: IFacepilePersona) => {
-        console.log(persona);
+        this.setDeveloper(this.state.developers.filter(x => x.fullname === persona.personaName)[0]);
     }
 
     private handleDevChange = (event: React.ChangeEvent<HTMLInputElement>, option?: IDropdownOption, index?: number) => {
-        let developer: IDeveloper = this.state.developers.filter(x => x.id === option.key)[0];
+        let developer: IDeveloper = this.state.developers.filter(x => x.developerId === option.key)[0];
         this.setDeveloper(developer);
     }
 
@@ -81,7 +92,7 @@ export class DeveloperSkills extends React.Component<IDeveloperSkillsProps, IDev
         let skillSubset: ISkillSet = this.state.skillSubsets.filter(x => x.name === option.text)[0];
         this.setSubset(skillSubset);
     }
-    private updateStats(){
+    private updateStats() {
         let stats = [];
         if (this.state.selectedDeveloper !== undefined && this.state.selectedSubset !== undefined) {
             let slecetedSkills = this.state.selectedDeveloper.skills.filter(x => x.name === this.state.selectedSubset.name)[0];
@@ -96,16 +107,16 @@ export class DeveloperSkills extends React.Component<IDeveloperSkillsProps, IDev
         developers.splice(developers.indexOf(this.state.selectedDeveloper), 1);
         this.setTeam(developers);
     }
-    
+
     private addDev = () => {
         let developers = this.state.slectedTeam;
         developers.push(this.state.selectedDeveloper);
         this.setTeam(developers);
     }
 
-    private async getDevelopers() : Promise<IDeveloper[]> {
-        let developers : IDeveloper[] = [];
-        await this.spService.getItems().then(result =>{  
+    private async getDevelopers(): Promise<IDeveloper[]> {
+        let developers: IDeveloper[] = [];
+        await this.spService.getDevelopers().then(result => {
             result.sort((a, b) => {
                 var nameA = a.team.toUpperCase();
                 var nameB = b.team.toUpperCase();
@@ -116,6 +127,16 @@ export class DeveloperSkills extends React.Component<IDeveloperSkillsProps, IDev
             developers = result;
         });
         return developers;
+    }
+    private async getSubsets() {
+        await this.spService.getSubsets().then(result => {
+            this.setSubsets(result);
+            const skilloptions: IDropdownOption[] = [];
+            result.map((value, index) => {
+                skilloptions.push({ key: index, text: value.name });
+            });
+            this.setSkillOptions(skilloptions);
+        });
     }
 
     private renderTeamStats(subset: ISkillSet): React.ReactElement<IDeveloperSkillsProps> {
@@ -155,31 +176,32 @@ export class DeveloperSkills extends React.Component<IDeveloperSkillsProps, IDev
             </ComposedChart>
         </Grid>);
     }
-    public async componentDidMount() {
-        await this.getDevelopers().then((developers)=> {
-            console.log(developers)
+    private async fetchData(){
+        this.setState({_loading : true});
+        await this.getDevelopers().then((developers) => {
             const options: IDropdownOption[] = [];
+            this.setDevelopers(developers);
             developers.map((value, index) => {
                 if (!options.some(x => x.key === value.team + "Header")) {
                     options.push({ key: 'divider_' + index, text: '-', itemType: DropdownMenuItemType.Divider });
                     options.push({ key: value.team + "Header", text: value.team, itemType: DropdownMenuItemType.Header });
                 }
                 // options.push({ key: value.id, text: value.surname + ", " + value.givenName });
-                options.push({ key: value.id, text: value.fullname});
+                options.push({ key: value.developerId, text: value.fullname });
             });
             this.setDeveloperOptions(options);
-            this.setSubsets(developers[0].skills);
-            const skilloptions: IDropdownOption[] = [];
-            this.state.skillSubsets.map((value, index) => {
-                skilloptions.push({ key: index, text: value.name });
-            });
-            this.setSkillOptions(skilloptions);
-        }).then(() => 
-            this.setState({_isMounted : true})
+            this.getSubsets();
+            this.updateStats();
+        })
+        this.setState({_loading : false});
+    }
+    public async componentDidMount() {
+        await this.fetchData().then(() =>
+            this.setState({ _isMounted: true })
         );
     }
-    public componentDidUpdate(prevProps, prevState,) {
-        if (this.state.selectedDeveloper !== prevState.selectedDeveloper || this.state.selectedSubset !== prevState.selectedSubset ) {
+    public componentDidUpdate(prevProps, prevState, ) {
+        if (this.state.selectedDeveloper !== prevState.selectedDeveloper || this.state.selectedSubset !== prevState.selectedSubset) {
             this.updateStats();
         }
     }
@@ -192,85 +214,98 @@ export class DeveloperSkills extends React.Component<IDeveloperSkillsProps, IDev
         });
         return (
             <React.Fragment>
-                {this.state._isMounted &&
-                <Grid container spacing={3}>
-                    <Grid item xs={6}>
-                        <Dropdown name="selectedDeveloper" placeholder="Select an option" label="Select Developer" options={this.state.developerOptions} onChange={this.handleDevChange} />
-                    </Grid>
-                    <Grid item xs={6}>
-                        <Dropdown name="selectedSubset" placeholder="Select an option" label="Select Skill Subset" options={this.state.skillOptions} onChange={this.handleSkillChange} />
-                    </Grid>
-                    {this.state.selectedDeveloper !== undefined ?
-                        <>
-                            <Grid item xs={5}>
-                                <Grid container spacing={3}>
-                                    <Grid item xs={12} className={classes.center}>
-                                        <Persona
-                                            text={this.state.selectedDeveloper.fullname}
-                                            // text={this.state.selectedDeveloper.givenName + " " + this.state.selectedDeveloper.surname}
-                                            secondaryText={this.state.selectedDeveloper.jobTitle}
-                                            size={PersonaSize.size56}
-                                            imageAlt={this.state.selectedDeveloper.fullname}
-                                            // imageAlt={this.state.selectedDeveloper.surname + ", " + this.state.selectedDeveloper.givenName}
-                                            tertiaryText={this.state.selectedDeveloper.team}
-                                        />
-                                        <IconButton iconProps={{ iconName: 'PlayerSettings' }} title="Settings" ariaLabel="Settings" />
-                                    </Grid>
-                                    <Grid item xs={12} className={classes.center}>
-                                        <PrimaryButton iconProps={{ iconName: 'Remove' }} text="Remove" onClick={this.removeDev} disabled={!this.state.slectedTeam.some(x => x.id === this.state.selectedDeveloper.id)} />
-                                        <PrimaryButton iconProps={{ iconName: 'Add' }} text="Add" onClick={this.addDev} disabled={this.state.slectedTeam.some(x => x.id === this.state.selectedDeveloper.id)} />
-                                    </Grid>
-                                    <Grid item xs={12} className={classes.center}>
-                                        <div style={{ fontSize: FontSizes.medium }}>
-                                            Selected Team:
+                {this.state._isMounted && <>
+                    <Grid container spacing={3}>
+                        <Grid item xs={6}>
+                            <Dropdown name="selectedDeveloper" placeholder="Select an option" label="Select Developer" options={this.state.developerOptions} onChange={this.handleDevChange} selectedKey={this.state.selectedDeveloper !== undefined ? this.state.selectedDeveloper.developerId : undefined} />
+                        </Grid>
+                        <Grid item xs={6}>
+                            <Dropdown name="selectedSubset" placeholder="Select an option" label="Select Skill Subset" options={this.state.skillOptions} onChange={this.handleSkillChange} />
+                        </Grid>
+                        {this.state.selectedDeveloper !== undefined ?
+                            <>
+                            {!this.state._loading ? 
+                            <>
+                                <Grid item xs={6}>
+                                    <Grid container spacing={3}>
+                                        <Grid item xs={12} className={classes.center}>
+                                            <Persona
+                                                text={this.state.selectedDeveloper.fullname}
+                                                // text={this.state.selectedDeveloper.givenName + " " + this.state.selectedDeveloper.surname}
+                                                secondaryText={"Work: " + this.state.selectedDeveloper.workPhone}
+                                                size={PersonaSize.size100}
+                                                imageAlt={this.state.selectedDeveloper.fullname}
+                                                // imageAlt={this.state.selectedDeveloper.surname + ", " + this.state.selectedDeveloper.givenName}
+                                                tertiaryText={"After Hours: " + this.state.selectedDeveloper.afterHoursPhone}
+                                                optionalText={this.state.selectedDeveloper.workHours}
+                                            />
+                                            {this.props.currentUser.Id.toString() === this.state.selectedDeveloper.developerId &&
+                                                <ActionButton iconProps={{ iconName: 'PlayerSettings' }} onClick={this.openPanel}>
+                                                    Modify Information
+                                            </ActionButton>
+                                            }
+                                        </Grid>
+                                        <Grid item xs={12} className={classes.center}>
+                                            <PrimaryButton iconProps={{ iconName: 'Remove' }} text="Remove" onClick={this.removeDev} disabled={!this.state.slectedTeam.some(x => x.developerId === this.state.selectedDeveloper.developerId)} />
+                                            <PrimaryButton iconProps={{ iconName: 'Add' }} text="Add" onClick={this.addDev} disabled={this.state.slectedTeam.some(x => x.developerId === this.state.selectedDeveloper.developerId)} />
+                                        </Grid>
+                                        <Grid item xs={12} className={classes.center}>
+                                            <div style={{ fontSize: FontSizes.medium }}>
+                                                Selected Team:
                                         </div>
-                                        <Facepile
-                                            personaSize={PersonaSize.size40}
-                                            personas={team}
-                                        />
+                                            <Facepile
+                                                personaSize={PersonaSize.size40}
+                                                personas={team}
+                                            />
+                                        </Grid>
                                     </Grid>
                                 </Grid>
-                            </Grid>
-                            <Grid item xs={7}>
-                                {this.state.selectedSubset !== undefined && this.state.stats !== [] ?
-                                    <RadarChart cx={"55%"} cy={"50%"} width={400} height={300} data={this.state.stats}>
-                                        <PolarGrid />
-                                        <PolarAngleAxis dataKey="subject" />
-                                        <PolarRadiusAxis angle={60} domain={[0, 10]} />
-                                        <Radar dataKey="value" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} />
-                                    </RadarChart> :
-                                    <div style={{ fontSize: FontSizes.medium }}>
-                                        No Skill Subset Selected.
-                                </div>
-                                }
-                            </Grid>
+                                <Grid item xs={6}>
+                                    {this.state.selectedSubset !== undefined && this.state.stats !== [] ?
+                                        <RadarChart cx={"50%"} cy={"50%"} width={400} height={300} data={this.state.stats}>
+                                            <PolarGrid />
+                                            <PolarAngleAxis dataKey="subject" />
+                                            <PolarRadiusAxis angle={60} domain={[0, 10]} />
+                                            <Radar dataKey="value" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} />
+                                        </RadarChart> :
+                                        <div style={{ fontSize: FontSizes.medium }}>
+                                            No Skill Subset Selected.
+                                </div>}
+                                </Grid>
+                                </> :      
+                                    <div>
+                                        <Label>Spinner with label positioned below</Label>
+                                        <Spinner label="Loading..." />
+                                    </div>}
 
-                        </> :
-                        <Grid item xs={12}>
-                            <div style={{ fontSize: FontSizes.medium }} className={classes.center}>
-                                No Developer Selected.
+                            </> :
+                            <Grid item xs={12}>
+                                <div style={{ fontSize: FontSizes.medium }} className={classes.center}>
+                                    No Developer Selected.
                             </div>
-                        </Grid>
-                    }
-                    <Grid item xs={12}>
-                        <div style={{ fontSize: FontSizes.xLarge }} className={classes.center}>
-                            Team Stats
-                        </div>
-                    </Grid>
-                    {this.state.slectedTeam.length > 0 ?
-                        this.state.skillSubsets.map((subset, index) => {
-                            return (
-                                <React.Fragment key={index}>
-                                    {this.renderTeamStats(subset)}
-                                </React.Fragment>);
-                        }) :
+                            </Grid>
+                        }
                         <Grid item xs={12}>
-                            <div style={{ fontSize: FontSizes.medium }} className={classes.center}>
-                                Add memebers to your team to generate stats!
+                            <div style={{ fontSize: FontSizes.xLarge }} className={classes.center}>
+                                Team Stats
                         </div>
                         </Grid>
-                    }
-                </Grid> }
+                        {this.state.slectedTeam.length > 0 ?
+                            this.state.skillSubsets.map((subset, index) => {
+                                return (
+                                    <React.Fragment key={index}>
+                                        {this.renderTeamStats(subset)}
+                                    </React.Fragment>);
+                            }) :
+                            <Grid item xs={12}>
+                                <div style={{ fontSize: FontSizes.medium }} className={classes.center}>
+                                    Add members to your team to generate stats.
+                                </div>
+                            </Grid>
+                        }
+                    </Grid> 
+                    {this.state.selectedDeveloper !== undefined && <DeveloperPanel isPanelOpen={this.state.isPanelOpen} closePanel={this.closePanel} developer={this.state.selectedDeveloper}/>}
+                </>}
             </React.Fragment>
         );
     }
